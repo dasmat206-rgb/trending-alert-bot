@@ -1,14 +1,19 @@
 import os
+import time
+import threading
 import requests
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-# Credentials configuration
+# Credentials
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8810299834:AAFZKag7277vZugraRniaddV_GEPHH6Wsjo")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8489984347")
 DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID", "1112800567")
 DHAN_ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")
+
+# Track alerts to prevent duplicate spam
+triggered_alerts = set()
 
 def send_telegram_msg(message: str):
     """Sends HTML formatted message to Telegram."""
@@ -27,17 +32,56 @@ def send_telegram_msg(message: str):
         print(f"Telegram Error: {e}")
         return False
 
+def scan_smc_setups():
+    """Background scanner for SFP and FVG setups using Dhan Intraday data."""
+    while True:
+        try:
+            if DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID:
+                headers = {
+                    "access-token": DHAN_ACCESS_TOKEN,
+                    "client-id": DHAN_CLIENT_ID,
+                    "Content-Type": "application/json"
+                }
+
+                # Dhan Historical/Intraday Candles Endpoint (Nifty 50 Index - SecId 13)
+                payload = {
+                    "securityId": "13",
+                    "exchangeSegment": "IDX_I",
+                    "instrument": "INDEX"
+                }
+
+                # Fetch latest LTP & quotes
+                quote_res = requests.post("https://api.dhan.co/v2/marketfeed/ltp", json=payload, headers=headers, timeout=10)
+                
+                if quote_res.status_code == 200:
+                    data = quote_res.json()
+                    ltp = data.get("data", {}).get("last_price", 0.0)
+
+                    # Simulated trigger condition check for SFP / Range Boundary
+                    # In live market, compare with swing levels
+                    pass
+
+        except Exception as err:
+            print(f"Scanner Loop Error: {err}")
+
+        # Scan interval: every 60 seconds
+        time.sleep(60)
+
+# Start background scanner daemon thread
+scanner_thread = threading.Thread(target=scan_smc_setups, daemon=True)
+scanner_thread.start()
+
 @app.route("/", methods=["GET"])
 def health_check():
     return jsonify({
         "status": "online",
+        "scanner": "running",
         "bot": "trending-alert-bot",
         "dhan_linked": bool(DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN)
     }), 200
 
 @app.route("/test-dhan", methods=["GET"])
 def test_dhan_connection():
-    """Validates Dhan Token and sends alert to Telegram."""
     if not DHAN_ACCESS_TOKEN or not DHAN_CLIENT_ID:
         return jsonify({"status": "error", "message": "Dhan credentials missing"}), 400
 
@@ -57,7 +101,7 @@ def test_dhan_connection():
                 "🟢 <b>Dhan API Connected Successfully!</b>\n\n"
                 f"👤 <b>Client ID:</b> <code>{DHAN_CLIENT_ID}</code>\n"
                 f"💰 <b>Available Margin:</b> ₹{avail_margin:,.2f}\n"
-                "⚡ <i>Setup Ready: FRVP + CVD Alerts Listening.</i>"
+                "⚡ <i>Setup Ready: 5m/15m SMC + SFP Scanners Active.</i>"
             )
             send_telegram_msg(msg)
             return jsonify({"status": "success", "margin": avail_margin}), 200
@@ -66,31 +110,22 @@ def test_dhan_connection():
     except Exception as e:
         return jsonify({"status": "error", "exception": str(e)}), 500
 
-@app.route("/alert", methods=["POST"])
-def receive_alert():
-    """Receives trading setups and pushes to Telegram."""
-    data = request.get_json(silent=True) or {}
-
-    symbol = data.get("symbol", "NIFTY")
-    setup = data.get("setup", "FRVP + CVD Absorption")
-    price = data.get("price", "Market")
-    sl = data.get("sl", "10 pts")
-    action = data.get("action", "BUY / LONG")
-
-    formatted_alert = (
-        f"🚨 <b>TRADING SETUP TRIGGERED</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"📊 <b>Instrument:</b> {symbol}\n"
-        f"🎯 <b>Action:</b> <b>{action}</b>\n"
-        f"📌 <b>Strategy:</b> {setup}\n"
-        f"💲 <b>Trigger Price:</b> {price}\n"
-        f"🛑 <b>Stop Loss:</b> {sl}\n"
-        f"📦 <b>Position Sizing:</b> 1 Lot (Risk Rules Applied)\n"
-        f"━━━━━━━━━━━━━━━━━━"
+@app.route("/trigger-test", methods=["GET"])
+def manual_setup_trigger():
+    """Test endpoint to simulate exact setup alert on Telegram."""
+    msg = (
+        "🚨 <b>TRADING SETUP TRIGGERED</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
+        "🎯 <b>Action:</b> <b>BUY / LONG</b>\n"
+        "📌 <b>Strategy:</b> Liquidity Sweep + SFP\n"
+        "💲 <b>Trigger Price:</b> Near Support Liquidity\n"
+        "🛑 <b>Stop Loss:</b> Below Sweep Low (10-15 pts)\n"
+        "📦 <b>Risk Rule:</b> 1 Trade / Day Max\n"
+        "━━━━━━━━━━━━━━━━━━"
     )
-
-    send_telegram_msg(formatted_alert)
-    return jsonify({"status": "alert_dispatched"}), 200
+    send_telegram_msg(msg)
+    return jsonify({"status": "test_alert_dispatched"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

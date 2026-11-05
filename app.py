@@ -1,7 +1,7 @@
 import os
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, date
 import requests
 from flask import Flask, jsonify, request
 
@@ -31,8 +31,9 @@ def send_telegram_msg(message: str):
         return False
 
 def fetch_dhan_intraday_candles():
+    """Fetches intraday historical candles with Dhan v2 schema."""
     if not DHAN_ACCESS_TOKEN or not DHAN_CLIENT_ID:
-        return None
+        return None, "Missing credentials"
 
     headers = {
         "access-token": DHAN_ACCESS_TOKEN,
@@ -40,26 +41,32 @@ def fetch_dhan_intraday_candles():
         "Content-Type": "application/json"
     }
     
-    # Nifty 50 Index (SecId: 13, Exchange: IDX_I)
+    # NIFTY 50 Index
+    today_str = date.today().strftime("%Y-%m-%d")
     payload = {
         "securityId": "13",
         "exchangeSegment": "IDX_I",
         "instrument": "INDEX",
-        "interval": "5"
+        "interval": "5",
+        "fromDate": f"{today_str} 09:15:00",
+        "toDate": f"{today_str} 15:30:00"
     }
 
     try:
         res = requests.post("https://api.dhan.co/v2/charts/intraday", json=payload, headers=headers, timeout=10)
+        res_json = res.json()
         if res.status_code == 200:
-            return res.json().get("data", {})
+            # Dhan returns candles under "data" or root keys
+            return res_json.get("data", res_json), None
+        else:
+            return None, res_json
     except Exception as err:
-        print(f"Dhan Fetch Error: {err}")
-    return None
+        return None, str(err)
 
 def analyze_market_setups():
     while True:
         try:
-            candle_data = fetch_dhan_intraday_candles()
+            candle_data, err = fetch_dhan_intraday_candles()
 
             if candle_data and "close" in candle_data and len(candle_data["close"]) >= 8:
                 closes = candle_data["close"]
@@ -72,7 +79,7 @@ def analyze_market_setups():
                 candle_id = f"{i}_{highs[i]}_{lows[i]}"
 
                 if candle_id not in sent_alerts:
-                    # 1. SETUP: Liquidity Sweep + SFP
+                    # 1. SETUP: SFP
                     prev_swing_high = max(highs[max(0, i-6):i])
                     prev_swing_low = min(lows[max(0, i-6):i])
 
@@ -118,41 +125,6 @@ def analyze_market_setups():
                         )
                         sent_alerts.add(candle_id)
 
-                    # 3. SETUP: FRVP POC
-                    recent_vol = volumes[-12:]
-                    max_vol_idx = volumes.index(max(recent_vol))
-                    poc_price = (highs[max_vol_idx] + lows[max_vol_idx]) / 2.0
-                    val_level = min(lows[-12:]) + (poc_price - min(lows[-12:])) * 0.3
-                    vah_level = max(highs[-12:]) - (max(highs[-12:]) - poc_price) * 0.3
-
-                    if abs(closes[i] - poc_price) <= 6.0:
-                        send_telegram_msg(
-                            "🚨 <b>SETUP 3: FRVP POC LEVEL REACTION</b>\n"
-                            "━━━━━━━━━━━━━━━━━━\n"
-                            "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
-                            f"📌 <b>Exact POC Level:</b> {poc_price:.2f}\n"
-                            f"📐 <b>Value Area:</b> {val_level:.2f} - {vah_level:.2f}\n"
-                            f"💲 <b>Current Level:</b> {closes[i]:.2f}\n"
-                            "━━━━━━━━━━━━━━━━━━"
-                        )
-                        sent_alerts.add(candle_id)
-
-                    # 4. SETUP: CVD Absorption
-                    avg_vol = sum(volumes[-10:]) / 10.0
-                    body_size = abs(closes[i] - opens[i])
-                    if volumes[i] > (1.8 * avg_vol) and body_size < 8:
-                        absorb_type = "BULLISH ABSORPTION" if closes[i] > opens[i] else "BEARISH ABSORPTION"
-                        send_telegram_msg(
-                            f"🚨 <b>SETUP 4: {absorb_type} DETECTED</b>\n"
-                            "━━━━━━━━━━━━━━━━━━\n"
-                            "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
-                            f"💲 <b>Absorption Level:</b> {closes[i]:.2f}\n"
-                            f"📊 <b>Volume:</b> {volumes[i]} (Avg: {int(avg_vol)})\n"
-                            f"🎯 <b>Range:</b> {lows[i]:.2f} - {highs[i]:.2f}\n"
-                            "━━━━━━━━━━━━━━━━━━"
-                        )
-                        sent_alerts.add(candle_id)
-
         except Exception as e:
             print(f"Scanner Logic Error: {e}")
 
@@ -168,9 +140,15 @@ def health():
 # TEST AAJ KA REAL CHART DATA
 @app.route("/test-today-data", methods=["GET"])
 def test_today_data():
-    data = fetch_dhan_intraday_candles()
-    if not data or "close" not in data or len(data["close"]) == 0:
-        return jsonify({"status": "failed", "detail": "Dhan historical candles not returned"}), 400
+    data, err_detail = fetch_dhan_intraday_candles()
+    
+    # Debug: Agar Dhan API ne direct error bheja toh exact reason screen par dikhega
+    if not data or "close" not in data or len(data.get("close", [])) == 0:
+        return jsonify({
+            "status": "failed",
+            "dhan_response": err_detail,
+            "solution": "Dhan historical charts requires live session or valid date filter"
+        }), 400
 
     closes = data["close"]
     highs = data["high"]
@@ -178,12 +156,9 @@ def test_today_data():
     opens = data["open"]
     total_candles = len(closes)
 
-    # Pick latest closed candle from today
     last_idx = total_candles - 1
     recent_high = max(highs[max(0, last_idx-6):last_idx])
     recent_low = min(lows[max(0, last_idx-6):last_idx])
-    
-    # Calculate actual Order Block zone from previous candles
     ob_low = min(lows[last_idx-2], opens[last_idx-2])
     ob_high = max(highs[last_idx-2], closes[last_idx-2])
 
@@ -197,8 +172,7 @@ def test_today_data():
         f"📌 <b>Recent Swing Low:</b> {recent_low:.2f}\n"
         f"📦 <b>Nearest OB Zone:</b> {ob_low:.2f} - {ob_high:.2f}\n"
         f"🛑 <b>Calculated SL:</b> {ob_low - 5.00:.2f}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "✅ <i>Dhan real candles parsed without errors.</i>"
+        "━━━━━━━━━━━━━━━━━━"
     )
     send_telegram_msg(msg)
     return jsonify({

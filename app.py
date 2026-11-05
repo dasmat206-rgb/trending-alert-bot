@@ -31,12 +31,4 @@ def webhook():
         f"🚨 *ALGO SIGNAL TRIGGERED*\n\n"
         f"🎯 *Setup:* {setup_name}\n"
         f"📍 *Level:* {level}\n"
-        f"📊 *Detail:* {alert_text}\n\n"
-        f"📝 *Rule:* Check Option Chart | Max 10 pts SL | 65 Qty\n"
-    )
-    
-    send_telegram_alert(formatted_msg)
-    return {"status": "success"}, 200
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+        f"📊 *D    send_telegram_alert(formatted_ms    return {

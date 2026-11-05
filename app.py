@@ -7,7 +7,6 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-# Credentials configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8810299834:AAFZKag7277vZugraRniaddV_GEPHH6Wsjo")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8489984347")
 DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID", "1112800567")
@@ -77,74 +76,49 @@ def analyze_market_setups():
                     prev_swing_high = max(highs[max(0, i-6):i])
                     prev_swing_low = min(lows[max(0, i-6):i])
 
-                    # Bearish SFP
                     if highs[i] > prev_swing_high and closes[i] < prev_swing_high:
-                        msg = (
+                        send_telegram_msg(
                             "🚨 <b>SETUP 1: BEARISH SFP DETECTED</b>\n"
                             "━━━━━━━━━━━━━━━━━━\n"
                             "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
                             "🎯 <b>Action:</b> <b>SELL / SHORT</b>\n"
-                            f"📌 <b>Swept High Level:</b> {prev_swing_high:.2f}\n"
-                            f"💲 <b>Trigger Price:</b> {closes[i]:.2f}\n"
-                            f"🛑 <b>Exact SL Level:</b> {highs[i] + 4.00:.2f}\n"
-                            "📦 <b>Condition:</b> Liquidity grab above swing high\n"
+                            f"📌 <b>Swept Level:</b> {prev_swing_high:.2f}\n"
+                            f"💲 <b>Trigger Close:</b> {closes[i]:.2f}\n"
+                            f"🛑 <b>Exact SL:</b> {highs[i] + 4.00:.2f}\n"
                             "━━━━━━━━━━━━━━━━━━"
                         )
-                        send_telegram_msg(msg)
                         sent_alerts.add(candle_id)
 
-                    # Bullish SFP
                     elif lows[i] < prev_swing_low and closes[i] > prev_swing_low:
-                        msg = (
+                        send_telegram_msg(
                             "🚨 <b>SETUP 1: BULLISH SFP DETECTED</b>\n"
                             "━━━━━━━━━━━━━━━━━━\n"
                             "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
                             "🎯 <b>Action:</b> <b>BUY / LONG</b>\n"
-                            f"📌 <b>Swept Low Level:</b> {prev_swing_low:.2f}\n"
-                            f"💲 <b>Trigger Price:</b> {closes[i]:.2f}\n"
-                            f"🛑 <b>Exact SL Level:</b> {lows[i] - 4.00:.2f}\n"
-                            "📦 <b>Condition:</b> Liquidity grab below swing low\n"
+                            f"📌 <b>Swept Level:</b> {prev_swing_low:.2f}\n"
+                            f"💲 <b>Trigger Close:</b> {closes[i]:.2f}\n"
+                            f"🛑 <b>Exact SL:</b> {lows[i] - 4.00:.2f}\n"
                             "━━━━━━━━━━━━━━━━━━"
                         )
-                        send_telegram_msg(msg)
                         sent_alerts.add(candle_id)
 
-                    # 2. SETUP: Order Block + FVG Zone
+                    # 2. SETUP: OB + FVG
                     if lows[i] > highs[i-2] and closes[i-1] > opens[i-1]:
                         ob_low = min(lows[i-2], opens[i-2])
                         ob_high = max(highs[i-2], closes[i-2])
-                        msg = (
+                        send_telegram_msg(
                             "🚨 <b>SETUP 2: BULLISH OB + FVG ZONE</b>\n"
                             "━━━━━━━━━━━━━━━━━━\n"
                             "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
                             "🎯 <b>Action:</b> <b>BUY / DEMAND</b>\n"
-                            f"📦 <b>Order Block (OB) Range:</b> {ob_low:.2f} - {ob_high:.2f}\n"
-                            f"🎯 <b>FVG Imbalance Zone:</b> {highs[i-2]:.2f} - {lows[i]:.2f}\n"
-                            f"💲 <b>Entry Level:</b> Retest of {highs[i-2]:.2f}\n"
-                            f"🛑 <b>Exact SL Level:</b> {ob_low - 5.00:.2f}\n"
+                            f"📦 <b>Order Block (OB):</b> {ob_low:.2f} - {ob_high:.2f}\n"
+                            f"🎯 <b>FVG Gap:</b> {highs[i-2]:.2f} - {lows[i]:.2f}\n"
+                            f"🛑 <b>Exact SL:</b> {ob_low - 5.00:.2f}\n"
                             "━━━━━━━━━━━━━━━━━━"
                         )
-                        send_telegram_msg(msg)
                         sent_alerts.add(candle_id)
 
-                    elif highs[i] < lows[i-2] and closes[i-1] < opens[i-1]:
-                        ob_low = min(lows[i-2], closes[i-2])
-                        ob_high = max(highs[i-2], opens[i-2])
-                        msg = (
-                            "🚨 <b>SETUP 2: BEARISH OB + FVG ZONE</b>\n"
-                            "━━━━━━━━━━━━━━━━━━\n"
-                            "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
-                            "🎯 <b>Action:</b> <b>SELL / SUPPLY</b>\n"
-                            f"📦 <b>Order Block (OB) Range:</b> {ob_low:.2f} - {ob_high:.2f}\n"
-                            f"🎯 <b>FVG Imbalance Zone:</b> {lows[i-2]:.2f} - {highs[i]:.2f}\n"
-                            f"💲 <b>Entry Level:</b> Retest of {lows[i-2]:.2f}\n"
-                            f"🛑 <b>Exact SL Level:</b> {ob_high + 5.00:.2f}\n"
-                            "━━━━━━━━━━━━━━━━━━"
-                        )
-                        send_telegram_msg(msg)
-                        sent_alerts.add(candle_id)
-
-                    # 3. SETUP: FRVP POC & Value Area Bounce
+                    # 3. SETUP: FRVP POC
                     recent_vol = volumes[-12:]
                     max_vol_idx = volumes.index(max(recent_vol))
                     poc_price = (highs[max_vol_idx] + lows[max_vol_idx]) / 2.0
@@ -152,18 +126,15 @@ def analyze_market_setups():
                     vah_level = max(highs[-12:]) - (max(highs[-12:]) - poc_price) * 0.3
 
                     if abs(closes[i] - poc_price) <= 6.0:
-                        msg = (
+                        send_telegram_msg(
                             "🚨 <b>SETUP 3: FRVP POC LEVEL REACTION</b>\n"
                             "━━━━━━━━━━━━━━━━━━\n"
                             "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
-                            "🎯 <b>Strategy:</b> Value Profile Rejection\n"
                             f"📌 <b>Exact POC Level:</b> {poc_price:.2f}\n"
-                            f"📐 <b>Value Area Range (VAL - VAH):</b> {val_level:.2f} - {vah_level:.2f}\n"
-                            f"💲 <b>Current Test Level:</b> {closes[i]:.2f}\n"
-                            f"🛑 <b>Suggested SL:</b> 12-15 points outside POC\n"
+                            f"📐 <b>Value Area:</b> {val_level:.2f} - {vah_level:.2f}\n"
+                            f"💲 <b>Current Level:</b> {closes[i]:.2f}\n"
                             "━━━━━━━━━━━━━━━━━━"
                         )
-                        send_telegram_msg(msg)
                         sent_alerts.add(candle_id)
 
                     # 4. SETUP: CVD Absorption
@@ -171,18 +142,15 @@ def analyze_market_setups():
                     body_size = abs(closes[i] - opens[i])
                     if volumes[i] > (1.8 * avg_vol) and body_size < 8:
                         absorb_type = "BULLISH ABSORPTION" if closes[i] > opens[i] else "BEARISH ABSORPTION"
-                        msg = (
+                        send_telegram_msg(
                             f"🚨 <b>SETUP 4: {absorb_type} DETECTED</b>\n"
                             "━━━━━━━━━━━━━━━━━━\n"
                             "📊 <b>Instrument:</b> NIFTY 50 (5m)\n"
-                            "📌 <b>Signal:</b> Institutional Delta / CVD Exhaustion\n"
-                            f"💲 <b>Absorption Exact Level:</b> {closes[i]:.2f}\n"
-                            f"📊 <b>Volume Spike:</b> {volumes[i]} (Avg: {int(avg_vol)})\n"
-                            f"🎯 <b>Price Reaction Range:</b> {lows[i]:.2f} - {highs[i]:.2f}\n"
-                            "⚠️ <b>Observation:</b> High volume absorbed without candle expansion\n"
+                            f"💲 <b>Absorption Level:</b> {closes[i]:.2f}\n"
+                            f"📊 <b>Volume:</b> {volumes[i]} (Avg: {int(avg_vol)})\n"
+                            f"🎯 <b>Range:</b> {lows[i]:.2f} - {highs[i]:.2f}\n"
                             "━━━━━━━━━━━━━━━━━━"
                         )
-                        send_telegram_msg(msg)
                         sent_alerts.add(candle_id)
 
         except Exception as e:
@@ -190,27 +158,54 @@ def analyze_market_setups():
 
         time.sleep(60)
 
-# Start real-time background scanner
 scanner_thread = threading.Thread(target=analyze_market_setups, daemon=True)
 scanner_thread.start()
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"bot": "active", "scanners": "all_4_setups_with_exact_levels_active"}), 200
+    return jsonify({"bot": "active"}), 200
 
-# INSTANT TEST FOR ALL 4 SETUPS WITH EXACT NUMBERS
-@app.route("/test-all-setups", methods=["GET"])
-def test_all_setups():
-    setups = [
-        ("🚨 <b>SETUP 1: BULLISH SFP DETECTED</b>\n━━━━━━━━━━━━━━━━━━\n📊 <b>Instrument:</b> NIFTY 50 (5m)\n🎯 <b>Action:</b> <b>BUY / LONG</b>\n📌 <b>Swept Low Level:</b> 23,420.00\n💲 <b>Trigger Price:</b> 23,435.50\n🛑 <b>Exact SL Level:</b> 23,415.00\n📦 <b>Condition:</b> Liquidity grab below swing low\n━━━━━━━━━━━━━━━━━━"),
-        ("🚨 <b>SETUP 2: BULLISH OB + FVG ZONE</b>\n━━━━━━━━━━━━━━━━━━\n📊 <b>Instrument:</b> NIFTY 50 (5m)\n🎯 <b>Action:</b> <b>BUY / DEMAND</b>\n📦 <b>Order Block (OB) Range:</b> 23,450.00 - 23,480.00\n🎯 <b>FVG Imbalance Zone:</b> 23,480.00 - 23,510.00\n💲 <b>Entry Level:</b> Retest of 23,480.00\n🛑 <b>Exact SL Level:</b> 23,445.00\n━━━━━━━━━━━━━━━━━━"),
-        ("🚨 <b>SETUP 3: FRVP POC LEVEL REACTION</b>\n━━━━━━━━━━━━━━━━━━\n📊 <b>Instrument:</b> NIFTY 50 (5m)\n🎯 <b>Strategy:</b> Value Profile Rejection\n📌 <b>Exact POC Level:</b> 23,465.00\n📐 <b>Value Area Range (VAL - VAH):</b> 23,440.00 - 23,495.00\n💲 <b>Current Test Level:</b> 23,467.50\n🛑 <b>Suggested SL:</b> 12-15 points outside POC\n━━━━━━━━━━━━━━━━━━"),
-        ("🚨 <b>SETUP 4: BULLISH ABSORPTION DETECTED</b>\n━━━━━━━━━━━━━━━━━━\n📊 <b>Instrument:</b> NIFTY 50 (5m)\n📌 <b>Signal:</b> Institutional Delta / CVD Exhaustion\n💲 <b>Absorption Exact Level:</b> 23,490.00\n📊 <b>Volume Spike:</b> 2.4x Average Volume\n🎯 <b>Price Reaction Range:</b> 23,485.00 - 23,495.00\n⚠️ <b>Observation:</b> High volume absorbed without candle expansion\n━━━━━━━━━━━━━━━━━━")
-    ]
-    for s in setups:
-        send_telegram_msg(s)
-        time.sleep(1)
-    return jsonify({"status": "All 4 setups with precise price levels pushed to Telegram!"}), 200
+# TEST AAJ KA REAL CHART DATA
+@app.route("/test-today-data", methods=["GET"])
+def test_today_data():
+    data = fetch_dhan_intraday_candles()
+    if not data or "close" not in data or len(data["close"]) == 0:
+        return jsonify({"status": "failed", "detail": "Dhan historical candles not returned"}), 400
+
+    closes = data["close"]
+    highs = data["high"]
+    lows = data["low"]
+    opens = data["open"]
+    total_candles = len(closes)
+
+    # Pick latest closed candle from today
+    last_idx = total_candles - 1
+    recent_high = max(highs[max(0, last_idx-6):last_idx])
+    recent_low = min(lows[max(0, last_idx-6):last_idx])
+    
+    # Calculate actual Order Block zone from previous candles
+    ob_low = min(lows[last_idx-2], opens[last_idx-2])
+    ob_high = max(highs[last_idx-2], closes[last_idx-2])
+
+    msg = (
+        "📈 <b>AAJ KA REAL CHART SCAN TEST</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>Instrument:</b> NIFTY 50 (5m Data)\n"
+        f"🕒 <b>Total Candles Today:</b> {total_candles}\n"
+        f"💲 <b>Market Close Level:</b> {closes[last_idx]:.2f}\n"
+        f"📌 <b>Recent Swing High:</b> {recent_high:.2f}\n"
+        f"📌 <b>Recent Swing Low:</b> {recent_low:.2f}\n"
+        f"📦 <b>Nearest OB Zone:</b> {ob_low:.2f} - {ob_high:.2f}\n"
+        f"🛑 <b>Calculated SL:</b> {ob_low - 5.00:.2f}\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "✅ <i>Dhan real candles parsed without errors.</i>"
+    )
+    send_telegram_msg(msg)
+    return jsonify({
+        "status": "success",
+        "candles_analyzed": total_candles,
+        "last_close": closes[last_idx]
+    }), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

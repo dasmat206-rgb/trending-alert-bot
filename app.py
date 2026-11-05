@@ -2,10 +2,7 @@ import os
 import requests
 from flask import Flask, jsonify, request
 
-app = Flask(__name__)
-
-# Render Environment Variables se keys uthayega
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8010299634:AAFZKag72T7vZugrsRnladdV_GEFhR6Wsjo")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8010299634:AAFZKag72T7vZugrsRnladdV_GEFhR6Wsjo"
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8489984347")
 DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID")
 DHAN_ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")

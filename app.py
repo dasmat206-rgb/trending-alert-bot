@@ -2,13 +2,16 @@ import os
 import requests
 from flask import Flask, jsonify, request
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8010299634:AAFZKag72T7vZugrsRnladdV_GEFhR6Wsjo"
+app = Flask(__name__)
+
+# Credentials configuration
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8810299834:AAFZKag7277vZugraRniaddV_GEPHH6Wsjo")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8489984347")
-DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID")
+DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID", "1112800567")
 DHAN_ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")
 
 def send_telegram_msg(message: str):
-    """Sends HTML formatted message to Telegram channel/chat."""
+    """Sends HTML formatted message to Telegram."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return False
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -21,7 +24,7 @@ def send_telegram_msg(message: str):
         res = requests.post(url, json=payload, timeout=10)
         return res.status_code == 200
     except Exception as e:
-        print(f"Telegram Send Error: {e}")
+        print(f"Telegram Error: {e}")
         return False
 
 @app.route("/", methods=["GET"])
@@ -34,7 +37,7 @@ def health_check():
 
 @app.route("/test-dhan", methods=["GET"])
 def test_dhan_connection():
-    """Validates Dhan Access Token with Dhan API."""
+    """Validates Dhan Token and sends alert to Telegram."""
     if not DHAN_ACCESS_TOKEN or not DHAN_CLIENT_ID:
         return jsonify({"status": "error", "message": "Dhan credentials missing"}), 400
 
@@ -49,7 +52,7 @@ def test_dhan_connection():
         if dhan_res.status_code == 200:
             fund_data = dhan_res.json()
             avail_margin = fund_data.get("availMargin", 0.0)
-            
+
             msg = (
                 "🟢 <b>Dhan API Connected Successfully!</b>\n\n"
                 f"👤 <b>Client ID:</b> <code>{DHAN_CLIENT_ID}</code>\n"
@@ -65,7 +68,7 @@ def test_dhan_connection():
 
 @app.route("/alert", methods=["POST"])
 def receive_alert():
-    """Receives trading setup signals (FRVP, FVG, CVD) and pushes to Telegram."""
+    """Receives trading setups and pushes to Telegram."""
     data = request.get_json(silent=True) or {}
 
     symbol = data.get("symbol", "NIFTY")
